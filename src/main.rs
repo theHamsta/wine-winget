@@ -1,10 +1,10 @@
+use crate::schema::{Architecture, InstallerManifest, InstallerType, PackageManifest};
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
 use indicatif::ProgressBar;
 use log::{debug, info, trace, warn};
 use regex::Regex;
 use semver::{Version, VersionReq};
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -15,58 +15,7 @@ use std::sync::LazyLock;
 use crate::cli::{Args, Install, Search};
 
 mod cli;
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "PascalCase")]
-#[allow(dead_code)]
-struct PackageManifest {
-    pub package_identifier: String,
-    pub package_version: String,
-    pub default_locale: String,
-    pub manifest_type: String,
-    pub manifest_version: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "PascalCase")]
-#[allow(dead_code)]
-struct Installer {
-    pub architecture: Architecture,
-    pub installer_url: String,
-    pub installer_sha256: String,
-    pub installer_type: Option<InstallerType>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "PascalCase")]
-#[allow(dead_code)]
-struct InstallerSwitches {
-    pub silent: Option<String>,
-    pub log: Option<String>,
-    pub silent_with_progress: Option<String>,
-    pub install_location: Option<String>,
-    pub custom: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-enum InstallerType {
-    Exe,
-    Zip,
-    Wix,
-    Msix,
-    Nullsoft,
-    Inno,
-}
-
-#[derive(Deserialize, Debug, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-enum Architecture {
-    X86,
-    X64,
-    Arm,
-    Arm64,
-}
+mod schema;
 
 struct DeleteOnDrop<'path> {
     path: &'path Path,
@@ -81,18 +30,6 @@ impl Drop for DeleteOnDrop<'_> {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(self.path);
     }
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "PascalCase")]
-#[allow(dead_code)]
-struct InstallerManifest {
-    pub package_identifier: String,
-    pub package_version: String,
-    pub installers: Vec<Installer>,
-    pub install_modes: Option<Vec<String>>,
-    pub installer_switches: Option<InstallerSwitches>,
-    pub installer_type: Option<InstallerType>,
 }
 
 static QUADRUPLE_VERSION_REGEX: LazyLock<Regex> =
