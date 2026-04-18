@@ -56,6 +56,7 @@ enum InstallerType {
     Wix,
     Msix,
     Nullsoft,
+    Inno,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -330,6 +331,9 @@ fn search(_args: &Args, search_args: &Search) -> Result<()> {
                     || match_all)
             {
                 match depth {
+                    0 => {
+                        todos.push((path.clone(), depth + 1, false));
+                    }
                     1 => {
                         todos.push((path.clone(), depth + 1, true));
                         println!(
