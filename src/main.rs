@@ -366,8 +366,8 @@ async fn main() -> Result<()> {
 
     match args.command.as_ref() {
         Some(cli::Commands::Install(install_args)) => install(&args, install_args).await?,
-        Some(cli::Commands::Upgrade(args)) => todo!(),
-        Some(cli::Commands::Remove(args)) => todo!(),
+        Some(cli::Commands::Upgrade(_args)) => todo!(),
+        Some(cli::Commands::Remove(_args)) => todo!(),
         Some(cli::Commands::Search(search_args)) => search(&args, search_args)?,
         None => {
             cli::Args::command().print_help()?;
