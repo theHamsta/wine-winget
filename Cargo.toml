@@ -1,0 +1,18 @@
+[package]
+name = "wine-winget"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.13", features = ["json"] } 
+sha2 = "0.11"
+hex = "0.4.3"
+serde = { version = "1.0", features = ["derive"] }
+yaml_serde = "0.10"
+clap = { version = "4.6.1", features = ["derive"] }
+clap_complete = "4.6"
+anyhow = { version = "1.0.102", features = ["backtrace"] }
+log = "0.4.29"
+pretty_env_logger = "0.5.0"
+semver = "1.0.28"
