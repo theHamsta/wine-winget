@@ -68,6 +68,21 @@ enum Architecture {
     Arm64,
 }
 
+struct DeleteOnDrop<'path> {
+    path: &'path Path,
+}
+impl<'path> DeleteOnDrop<'path> {
+    fn new(path: &'path Path) -> Self {
+        DeleteOnDrop { path }
+    }
+}
+
+impl Drop for DeleteOnDrop<'_> {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.path);
+    }
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 #[allow(dead_code)]
@@ -260,7 +275,8 @@ async fn install_package(
         .rsplit_once("/")
         .ok_or_else(|| anyhow!("Installer URL does not contain `/`"))?
         .1;
-    let download_path = format!("/tmp/{last}");
+    let download_path = std::env::temp_dir().join(last);
+    DeleteOnDrop::new(&download_path);
     download_file(&target_installer.installer_url, &download_path).await?;
     let actual = sha256_string(&download_path)?.to_ascii_lowercase();
     let expected = target_installer.installer_sha256.to_ascii_lowercase();
@@ -282,7 +298,6 @@ async fn install_package(
         bail!("Installer failed!");
     }
     println!("Installer ran successfully!");
-    let _ = std::fs::remove_file(&download_path);
 
     Ok(())
 }
@@ -401,7 +416,7 @@ async fn main() -> Result<()> {
 }
 
 /// Downloads the content from a URL and writes it to the specified path.
-async fn download_file(url: &str, path: &str) -> Result<()> {
+async fn download_file(url: &str, path: &Path) -> Result<()> {
     // For robust, large file downloads, streaming is best.
     // Here, we use reqwest's async capabilities and write to a file.
     let client = reqwest::Client::new();
@@ -423,7 +438,7 @@ async fn download_file(url: &str, path: &str) -> Result<()> {
 }
 
 /// Reads the file and calculates its SHA-256 hash, comparing it to the expected value.
-fn sha256_string(path: &str) -> Result<String> {
+fn sha256_string(path: &Path) -> Result<String> {
     // 1. Open the file to calculate the hash
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
