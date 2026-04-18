@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
+use indicatif::ProgressBar;
 use log::{debug, info, warn};
 use regex::Regex;
 use semver::{Version, VersionReq};
@@ -41,7 +42,9 @@ struct Installer {
 struct InstallerSwitches {
     pub silent: Option<String>,
     pub log: Option<String>,
-    pub silent_with_progress: String,
+    pub silent_with_progress: Option<String>,
+    pub install_location: Option<String>,
+    pub custom: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -264,7 +267,7 @@ async fn install_package(
     info!("Checksum ok");
     println!("Running {last:?}!");
     let mut install_cmd = if cfg!(unix) {
-        std::process::Command::new("wine")
+        std::process::Command::new(&install_args.wine)
             .arg(&download_path)
             .spawn()?
     } else {
@@ -379,15 +382,19 @@ async fn download_file(url: &str, path: &str) -> Result<()> {
     // For robust, large file downloads, streaming is best.
     // Here, we use reqwest's async capabilities and write to a file.
     let client = reqwest::Client::new();
-    let response = client.get(url).send().await?.error_for_status()?;
 
-    let file = File::create(path)?;
-    let mut writer = io::BufWriter::new(file);
+    let mut response = client.get(url).send().await?;
+    let content_length = response.content_length().unwrap_or(0);
 
-    // Stream the body contents directly to the file writer
-    let bytes = response.bytes().await?;
-    writer.write_all(&bytes)?;
-    writer.flush()?;
+    let progress_bar = ProgressBar::new(content_length);
+    let mut file = File::create(path)?;
+    let mut bytes_received = 0u64;
+
+    while let Some(chunk) = response.chunk().await? {
+        file.write_all(&chunk)?;
+        bytes_received += chunk.len() as u64;
+        progress_bar.set_position(bytes_received);
+    }
 
     Ok(())
 }

@@ -39,6 +39,11 @@ pub struct Install {
     /// Version or version requirement
     #[arg(long, value_enum)]
     pub version: Option<String>,
+    #[cfg(unix)]
+    /// Path to wine
+    #[cfg(unix)]
+    #[arg(long, default_value = "wine")]
+    pub wine: String,
 }
 
 #[derive(clap::Args, Debug)]
