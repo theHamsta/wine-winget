@@ -2100,6 +2100,7 @@ dependencies = [
  "hex",
  "log",
  "pretty_env_logger",
+ "regex",
  "reqwest",
  "semver",
  "serde",

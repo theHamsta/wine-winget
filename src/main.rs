@@ -1,12 +1,14 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
 use log::{debug, info, warn};
+use regex::Regex;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use crate::cli::{Args, Install, Search};
 
@@ -48,6 +50,7 @@ enum InstallerType {
     Exe,
     Zip,
     Wix,
+    Msix,
     Nullsoft,
 }
 
@@ -56,6 +59,7 @@ enum InstallerType {
 enum Architecture {
     X86,
     X64,
+    Arm,
     Arm64,
 }
 
@@ -71,6 +75,8 @@ struct InstallerManifest {
     pub installer_type: Option<InstallerType>,
 }
 
+static QUADRUPLE_VERSION_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\d+[.]\d+[.]\d+)[.]\d+").unwrap());
 fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
     let mut versions = std::fs::read_dir(dir)?
         .flatten()
@@ -92,6 +98,16 @@ fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
                     && req.is_none_or(|req| req.matches(&version))
                 {
                     return Some((version, path));
+                }
+                if QUADRUPLE_VERSION_REGEX.is_match(&filename.to_string_lossy()) {
+                    let version = Version::parse(
+                        &(QUADRUPLE_VERSION_REGEX.replace(&filename.to_string_lossy(), "$1")),
+                    );
+                    if let Ok(version) = version
+                        && req.is_none_or(|req| req.matches(&version))
+                    {
+                        return Some((version, path));
+                    }
                 }
                 warn!("Could not parse {path:?} as version. Ignoring!");
             }
@@ -223,7 +239,11 @@ async fn install_package(
     let target_installer = package_manifest
         .installers
         .iter()
-        .find(|i| i.architecture == arch_string)
+        .find(|i| {
+            i.architecture == arch_string
+                && !matches!(i.installer_type, Some(InstallerType::Msix))
+                && !matches!(i.installer_type, Some(InstallerType::Zip))
+        })
         .ok_or_else(|| anyhow!("Could not find installer for architecture {arch_string:?}"))?;
     debug!("Using installer: {target_installer:?}");
     println!("Downloading {:?}", target_installer.installer_url);
