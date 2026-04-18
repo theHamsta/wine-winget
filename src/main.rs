@@ -417,8 +417,6 @@ async fn main() -> Result<()> {
 
 /// Downloads the content from a URL and writes it to the specified path.
 async fn download_file(url: &str, path: &Path) -> Result<()> {
-    // For robust, large file downloads, streaming is best.
-    // Here, we use reqwest's async capabilities and write to a file.
     let client = reqwest::Client::new();
 
     let mut response = client.get(url).send().await?;
