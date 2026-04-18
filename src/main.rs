@@ -43,21 +43,32 @@ fn decompress_zip(reader: impl Read + Seek, target_path: &Path) -> Result<()> {
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
-        let out_path = target_path.join(file.name());
-        let mut out = File::create(&out_path)
-            .with_context(|| format!("Failed to create {out_path:?} for extractiong zip"))?;
-        println!("Decompressing {:?} to {out_path:?}", file.name());
-        std::io::copy(&mut file, &mut out)?;
+        if file.is_file()
+            && let Some(filename) = PathBuf::from(file.name()).file_name()
+        {
+            let out_path = target_path.join(filename);
+            let mut out = File::create(&out_path)
+                .with_context(|| format!("Failed to create {out_path:?} for extractiong zip"))?;
+            println!("Decompressing {:?} to {out_path:?}", file.name());
+            std::io::copy(&mut file, &mut out)?;
+        }
     }
 
     Ok(())
 }
 
-fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
+fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<(Version, PathBuf)> {
+    let mut sub_dirs = vec![];
     let mut versions = std::fs::read_dir(dir)?
         .flatten()
         .filter_map(|e| {
             let path = e.path();
+            if matches!(
+                path.file_name().unwrap().to_string_lossy().as_ref(),
+                "GNU" | "MSVC"
+            ) {
+                sub_dirs.push(path.clone());
+            }
             debug!("Checking {path:?} as version");
             if path.is_dir()
                 && let Some(filename) = path.file_name()
@@ -88,20 +99,29 @@ fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
             None
         })
         .collect::<Vec<_>>();
+    // MSVC and GNU sub dirs seem to be special
+    for sub_dir in sub_dirs.iter() {
+        versions.push(find_version(sub_dir, req)?);
+    }
     versions.sort_unstable();
 
     versions
         .pop()
         .ok_or_else(|| anyhow!("Found no version"))
-        .inspect(|(version, _)| println!("Found newest matching version: {version}"))
-        .map(|(_version, path)| path)
+        .inspect(|(version, _)| {
+            if !matches!(
+                dir.file_name().unwrap().to_string_lossy().as_ref(),
+                "GNU" | "MSVC"
+            ) {
+                println!("Found newest matching version: {version}")
+            }
+        })
 }
 
-fn find_sub_case_insensitive(dir: &Path, subpath: &str, file: bool) -> Result<PathBuf> {
-    let subdir = subpath.to_ascii_lowercase();
-    std::fs::read_dir(dir)?
-        .flatten()
-        .find_map(|e| {
+fn find_sub_case_insensitive(dir: &Path, subpath: &[&str], file: bool) -> Option<PathBuf> {
+    subpath.iter().find_map(|subpath| {
+        let subdir = subpath.to_ascii_lowercase();
+        std::fs::read_dir(dir).ok()?.flatten().find_map(|e| {
             let path = e.path();
             debug!("Checking {path:?} for {subdir:?}");
             if (if file { path.is_file() } else { path.is_dir() })
@@ -113,14 +133,14 @@ fn find_sub_case_insensitive(dir: &Path, subpath: &str, file: bool) -> Result<Pa
                 None
             }
         })
-        .ok_or_else(|| anyhow!("Failed to find subpath {subdir:?} in {dir:?}"))
+    })
 }
 
-fn find_subfile_case_insensitive(dir: &Path, subdir: &str) -> Result<PathBuf> {
-    find_sub_case_insensitive(dir, subdir, true)
+fn find_subfile_case_insensitive(dir: &Path, subdirs: &[&str]) -> Option<PathBuf> {
+    find_sub_case_insensitive(dir, subdirs, true)
 }
 
-fn find_subdir_case_insensitive(dir: &Path, subdir: &str) -> Result<PathBuf> {
+fn find_subdir_case_insensitive(dir: &Path, subdir: &[&str]) -> Option<PathBuf> {
     find_sub_case_insensitive(dir, subdir, false)
 }
 
@@ -141,12 +161,12 @@ fn package_path(package: &str, repo_path: &Path) -> Result<PathBuf> {
         );
     }
 
-    let letter_path = find_subdir_case_insensitive(&manifest_path, &first_letter)
-        .with_context(|| "Failed to find letter dir")?;
-    let vendor_path = find_subdir_case_insensitive(&letter_path, vendor)
-        .with_context(|| "Failed to find vendor dir")?;
-    let package_path = find_subdir_case_insensitive(&vendor_path, package)
-        .with_context(|| "Failed to find package dir")?;
+    let letter_path = find_subdir_case_insensitive(&manifest_path, &[&first_letter])
+        .ok_or_else(|| anyhow!("Failed to find letter dir"))?;
+    let vendor_path = find_subdir_case_insensitive(&letter_path, &[vendor])
+        .ok_or_else(|| anyhow!("Failed to find vendor dir"))?;
+    let package_path = find_subdir_case_insensitive(&vendor_path, &[package])
+        .ok_or_else(|| anyhow!("Failed to find package dir"))?;
     Ok(package_path)
 }
 
@@ -156,7 +176,7 @@ fn version_path(
     version_requirement: Option<&VersionReq>,
 ) -> Result<PathBuf> {
     let package_path = package_path(package, repo_path)?;
-    let version_path = find_version(&package_path, version_requirement)
+    let (_version, version_path) = find_version(&package_path, version_requirement)
         .with_context(|| "Failed to find version dir")?;
     debug!("version_path={version_path:?}");
     Ok(version_path)
@@ -178,8 +198,15 @@ async fn install_package(
     let (vendor, package) = package
         .split_once('.')
         .ok_or_else(|| anyhow!("Package name {package:?} does not contain a `.`. Package name should be something like LLVM.LLVM"))?;
-    let package_manifest =
-        find_subfile_case_insensitive(&version_path, &format!("{vendor}.{package}.yaml"))?;
+    let package_manifest = find_subfile_case_insensitive(
+        &version_path,
+        &[
+            &format!("{vendor}.{package}.yaml"),
+            &format!("{vendor}.{package}.gnu.yaml"),
+            &format!("{vendor}.{package}.msvc.yaml"),
+        ],
+    )
+    .ok_or_else(|| anyhow!("Could not find package_manifest"))?;
 
     let package_manifest: PackageManifest = yaml_serde::from_reader(File::open(&package_manifest)?)
         .with_context(|| {
@@ -192,8 +219,13 @@ async fn install_package(
     debug!("PackageManifest: {package_manifest:?}");
     let installer_manifest = find_subfile_case_insensitive(
         &version_path,
-        &format!("{vendor}.{package}.installer.yaml"),
-    )?;
+        &[
+            &format!("{vendor}.{package}.installer.yaml"),
+            &format!("{vendor}.{package}.gnu.installer.yaml"),
+            &format!("{vendor}.{package}.msvc.installer.yaml"),
+        ],
+    )
+    .ok_or_else(|| anyhow!("Failed to find installer manifest"))?;
     let package_manifest: InstallerManifest =
         yaml_serde::from_reader(File::open(&installer_manifest)?).with_context(|| {
             format!(
