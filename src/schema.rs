@@ -51,6 +51,7 @@ pub enum Architecture {
     X64,
     Arm,
     Arm64,
+    Neutral,
 }
 
 #[derive(Deserialize, Debug)]

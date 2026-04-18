@@ -245,7 +245,7 @@ async fn install_package(
         .installers
         .iter()
         .find(|i| {
-            i.architecture == arch_string
+            (i.architecture == arch_string || i.architecture == Architecture::Neutral)
                 && !matches!(i.installer_type, Some(InstallerType::Msix))
                 && !matches!(i.installer_type, Some(InstallerType::Zip))
         })
