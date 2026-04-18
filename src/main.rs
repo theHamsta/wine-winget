@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
 use indicatif::ProgressBar;
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn};
 use regex::Regex;
 use semver::{Version, VersionReq};
 use serde::Deserialize;
@@ -80,6 +80,10 @@ struct InstallerManifest {
 
 static QUADRUPLE_VERSION_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(\d+[.]\d+[.]\d+)[.]\d+").unwrap());
+
+static LEADING_ZERO_VERSION_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[.]0+(\d+)").unwrap());
+
 fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
     let mut versions = std::fs::read_dir(dir)?
         .flatten()
@@ -89,29 +93,25 @@ fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
             if path.is_dir()
                 && let Some(filename) = path.file_name()
             {
-                let version = Version::parse(&filename.to_string_lossy());
+                let version_str = filename.to_string_lossy();
+                let version_str = QUADRUPLE_VERSION_REGEX.replace(&version_str, "$1");
+                let version_str = LEADING_ZERO_VERSION_REGEX.replace_all(&version_str, ".$1");
+                trace!("{filename:?} is version {version_str}");
+
+                let version = Version::parse(&version_str);
                 if let Ok(version) = version
                     && req.is_none_or(|req| req.matches(&version))
                 {
                     return Some((version, path));
                 }
                 // If not semver (e.g. major.minor) add implicit patch version
-                let version = Version::parse(&(filename.to_string_lossy() + ".0"));
+                let version = Version::parse(&(version_str + ".0"));
                 if let Ok(version) = version
                     && req.is_none_or(|req| req.matches(&version))
                 {
                     return Some((version, path));
                 }
-                if QUADRUPLE_VERSION_REGEX.is_match(&filename.to_string_lossy()) {
-                    let version = Version::parse(
-                        &(QUADRUPLE_VERSION_REGEX.replace(&filename.to_string_lossy(), "$1")),
-                    );
-                    if let Ok(version) = version
-                        && req.is_none_or(|req| req.matches(&version))
-                    {
-                        return Some((version, path));
-                    }
-                }
+
                 warn!("Could not parse {path:?} as version. Ignoring!");
             }
             None
