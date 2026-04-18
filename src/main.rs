@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::cli::{Args, Install};
+use crate::cli::{Args, Install, Search};
 
 mod cli;
 
@@ -134,17 +134,7 @@ fn find_subdir_case_insensitive(dir: &Path, subdir: &str) -> Result<PathBuf> {
     find_sub_case_insensitive(dir, subdir, false)
 }
 
-async fn install_package(
-    _args: &Args,
-    package: &str,
-    install_args: &Install,
-) -> anyhow::Result<()> {
-    let version_req = install_args
-        .version
-        .as_ref()
-        .map(|v| VersionReq::parse(v))
-        .transpose()
-        .with_context(|| anyhow!("Failed to parse version requirement"))?;
+fn package_path(package: &str, repo_path: &Path) -> Result<PathBuf> {
     let first_letter = package
         .chars()
         .next()
@@ -153,7 +143,7 @@ async fn install_package(
     let (vendor, package) = package
         .split_once('.')
         .ok_or_else(|| anyhow!("Package name {package:?} does not contain a `.`. Package name should be something like LLVM.LLVM"))?;
-    let manifest_path = install_args.repo_path.join("manifests");
+    let manifest_path = repo_path.join("manifests");
     debug!("manifests_path={manifest_path:?}");
     if !manifest_path.is_dir() {
         bail!(
@@ -167,10 +157,37 @@ async fn install_package(
         .with_context(|| "Failed to find vendor dir")?;
     let package_path = find_subdir_case_insensitive(&vendor_path, package)
         .with_context(|| "Failed to find package dir")?;
-    let version_path = find_version(&package_path, version_req.as_ref())
-        .with_context(|| "Failed to find version dir")?;
-    debug!("version_path={vendor_path:?}");
+    Ok(package_path)
+}
 
+fn version_path(
+    package: &str,
+    repo_path: &Path,
+    version_requirement: Option<&VersionReq>,
+) -> Result<PathBuf> {
+    let package_path = package_path(package, repo_path)?;
+    let version_path = find_version(&package_path, version_requirement)
+        .with_context(|| "Failed to find version dir")?;
+    debug!("version_path={version_path:?}");
+    Ok(version_path)
+}
+
+async fn install_package(
+    _args: &Args,
+    package: &str,
+    install_args: &Install,
+) -> anyhow::Result<()> {
+    let version_req = install_args
+        .version
+        .as_ref()
+        .map(|v| VersionReq::parse(v))
+        .transpose()
+        .with_context(|| anyhow!("Failed to parse version requirement"))?;
+    let version_path = version_path(package, &install_args.repo_path, version_req.as_ref())?;
+
+    let (vendor, package) = package
+        .split_once('.')
+        .ok_or_else(|| anyhow!("Package name {package:?} does not contain a `.`. Package name should be something like LLVM.LLVM"))?;
     let package_manifest =
         find_subfile_case_insensitive(&version_path, &format!("{vendor}.{package}.yaml"))?;
 
@@ -251,6 +268,62 @@ async fn install(args: &Args, install_args: &Install) -> Result<()> {
     Ok(())
 }
 
+fn search(_args: &Args, search_args: &Search) -> Result<()> {
+    let search_string = &search_args.search_string.to_ascii_lowercase();
+
+    let manifest_path = search_args.repo_path.join("manifests");
+    debug!("manifests_path={manifest_path:?}");
+    let mut todos = vec![(manifest_path, 0, false)];
+    while let Some((todo_path, depth, match_all)) = todos.pop() {
+        if depth > 2 {
+            continue;
+        }
+        for e in std::fs::read_dir(&todo_path)?.flatten() {
+            let path = e.path();
+            if path.is_dir()
+                && (path
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .contains(search_string)
+                    || match_all)
+            {
+                match depth {
+                    1 => {
+                        todos.push((path.clone(), depth + 1, true));
+                        println!(
+                            "Found vendor: {}",
+                            path.file_name()
+                                .expect("Folder without name")
+                                .to_string_lossy()
+                        );
+                    }
+                    2 => {
+                        todos.push((path.clone(), depth + 1, true));
+                        let package = path.file_name().expect("Folder without name");
+                        let vendor = path
+                            .parent()
+                            .expect("Recursion depth is 2, but no parent")
+                            .file_name()
+                            .expect("Folder without name");
+                        println!(
+                            "Found package: {}.{}",
+                            vendor.to_string_lossy(),
+                            package.to_string_lossy()
+                        );
+                    }
+                    _ => (),
+                }
+            } else {
+                if path.is_dir() {
+                    todos.push((path.clone(), depth + 1, false));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
@@ -272,7 +345,7 @@ async fn main() -> Result<()> {
         Some(cli::Commands::Install(install_args)) => install(&args, install_args).await?,
         Some(cli::Commands::Upgrade(args)) => todo!(),
         Some(cli::Commands::Remove(args)) => todo!(),
-        Some(cli::Commands::Search(args)) => todo!(),
+        Some(cli::Commands::Search(search_args)) => search(&args, search_args)?,
         None => {
             cli::Args::command().print_help()?;
         }

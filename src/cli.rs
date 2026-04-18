@@ -55,5 +55,8 @@ pub struct Upgrade {
 
 #[derive(clap::Args, Debug)]
 pub struct Search {
-    pub package: String,
+    pub search_string: String,
+    /// Local path to https://github.com/microsoft/winget-pkgs
+    #[arg(long, value_enum)]
+    pub repo_path: PathBuf,
 }
