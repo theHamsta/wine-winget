@@ -40,6 +40,7 @@ pub enum InstallerType {
     Wix,
     Msix,
     Nullsoft,
+    Portable,
     Inno,
 }
 
