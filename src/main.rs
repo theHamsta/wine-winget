@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::LazyLock;
 
 use crate::cli::{Args, Install, Search};
@@ -284,6 +285,22 @@ async fn install_package(
 }
 
 async fn install(args: &Args, install_args: &Install) -> Result<()> {
+    if !install_args.no_update {
+        println!("Updating {:?}", install_args.repo_path);
+        let result = Command::new("git")
+            .arg("-C")
+            .arg(&install_args.repo_path)
+            .arg("pull")
+            .spawn();
+        if let Err(error) = &result {
+            warn!("Failed to update git repo: {error}");
+        } else {
+            if let Err(error) = result.unwrap().wait() {
+                warn!("Failed to update git repo: {error}");
+            }
+        }
+    }
+
     for package in install_args.packages.iter() {
         install_package(args, package, install_args).await?;
     }

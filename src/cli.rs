@@ -39,6 +39,11 @@ pub struct Install {
     /// Version or version requirement
     #[arg(long, value_enum)]
     pub version: Option<String>,
+
+    /// Skip updating the git repository
+    #[arg(long, value_enum)]
+    pub no_update: bool,
+
     #[cfg(unix)]
     /// Path to wine
     #[cfg(unix)]
