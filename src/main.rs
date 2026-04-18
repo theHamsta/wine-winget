@@ -7,7 +7,7 @@ use regex::Regex;
 use semver::{Version, VersionReq};
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
@@ -37,6 +37,21 @@ static QUADRUPLE_VERSION_REGEX: LazyLock<Regex> =
 
 static LEADING_ZERO_VERSION_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[.]0+(\d+)").unwrap());
+
+fn decompress_zip(reader: impl Read + Seek, target_path: &Path) -> Result<()> {
+    let mut zip = zip::ZipArchive::new(reader)?;
+
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i)?;
+        let out_path = target_path.join(file.name());
+        let mut out = File::create(&out_path)
+            .with_context(|| format!("Failed to create {out_path:?} for extractiong zip"))?;
+        println!("Decompressing {:?} to {out_path:?}", file.name());
+        std::io::copy(&mut file, &mut out)?;
+    }
+
+    Ok(())
+}
 
 fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
     let mut versions = std::fs::read_dir(dir)?
@@ -192,7 +207,6 @@ async fn install_package(
         target_arch = "x86" => Architecture::X86,
         target_arch = "x86_64" => Architecture::X64,
         target_arch = "aarch64" => Architecture::Arm64,
-        _ => bail!("Unsupported arch"),
     };
 
     let target_installer = package_manifest
@@ -222,19 +236,48 @@ async fn install_package(
     }
 
     info!("Checksum ok");
-    println!("Running {last:?}!");
-    let mut install_cmd = if cfg!(unix) {
-        std::process::Command::new(&install_args.wine)
-            .arg(&download_path)
-            .spawn()?
+    debug!("{:?}", target_installer);
+    if matches!(target_installer.installer_type, Some(InstallerType::Zip))
+        || target_installer.installer_url.ends_with("zip")
+    {
+        let install_path = if cfg!(unix) {
+            use std::process::Stdio;
+
+            println!("Running `winepath c:/windows/system32`");
+            let cmd = std::process::Command::new(&install_args.wine)
+                .stdout(Stdio::piped())
+                .arg("winepath")
+                .arg("c:/windows/system32")
+                .spawn()?;
+            let output = cmd.wait_with_output()?;
+            PathBuf::from(str::from_utf8(output.stdout.trim_ascii())?)
+        } else {
+            warn!(
+                "Writing to {:?}. Please copy `.exe` manually to preferred location",
+                std::env::temp_dir()
+            );
+            std::env::temp_dir()
+        };
+
+        decompress_zip(
+            File::open(download_path).with_context(|| "Failed to open downloaded file")?,
+            &install_path,
+        )?;
     } else {
-        std::process::Command::new(&download_path).spawn()?
-    };
-    let output = install_cmd.wait()?;
-    if !output.success() {
-        bail!("Installer failed!");
+        println!("Running {last:?}!");
+        let mut install_cmd = if cfg!(unix) {
+            std::process::Command::new(&install_args.wine)
+                .arg(&download_path)
+                .spawn()?
+        } else {
+            std::process::Command::new(&download_path).spawn()?
+        };
+        let output = install_cmd.wait()?;
+        if !output.success() {
+            bail!("Installer failed!");
+        }
+        println!("Installer ran successfully!");
     }
-    println!("Installer ran successfully!");
 
     Ok(())
 }
