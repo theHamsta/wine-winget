@@ -100,20 +100,22 @@ fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
                 trace!("{filename:?} is version {version_str}");
 
                 let version = Version::parse(&version_str);
-                if let Ok(version) = version
-                    && req.is_none_or(|req| req.matches(&version))
+                if let Ok(version) = &version
+                    && req.is_none_or(|req| req.matches(version))
                 {
-                    return Some((version, path));
+                    return Some((version.clone(), path));
                 }
-                // If not semver (e.g. major.minor) add implicit patch version
-                let version = Version::parse(&(version_str + ".0"));
-                if let Ok(version) = version
-                    && req.is_none_or(|req| req.matches(&version))
-                {
-                    return Some((version, path));
+                if version.is_err() {
+                    // If not semver (e.g. major.minor) add implicit patch version
+                    let version = Version::parse(&(version_str + ".0"));
+                    if let Ok(version) = &version
+                        && req.is_none_or(|req| req.matches(version))
+                    {
+                        return Some((version.clone(), path));
+                    } else if version.is_err() {
+                        warn!("Could not parse {path:?} as version. Ignoring!");
+                    }
                 }
-
-                warn!("Could not parse {path:?} as version. Ignoring!");
             }
             None
         })
@@ -123,8 +125,8 @@ fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<PathBuf> {
     versions
         .pop()
         .ok_or_else(|| anyhow!("Found no version"))
+        .inspect(|(version, _)| println!("Found newest matching version: {version}"))
         .map(|(_version, path)| path)
-        .inspect(|v| debug!("Found newest version: {v:?}"))
 }
 
 fn find_sub_case_insensitive(dir: &Path, subpath: &str, file: bool) -> Result<PathBuf> {
