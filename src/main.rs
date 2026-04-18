@@ -7,7 +7,7 @@ use semver::{Version, VersionReq};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
