@@ -4,6 +4,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
 use indicatif::ProgressBar;
 use itertools::Itertools;
+use lief::pe::signature::{VerificationChecks, VerificationFlags};
 use log::{debug, info, trace, warn};
 use regex::Regex;
 use semver::{Version, VersionReq};
@@ -260,11 +261,24 @@ async fn install_package(
     download_file(&target_installer.installer_url, &download_path).await?;
     let actual = sha256_string(&download_path)?.to_ascii_lowercase();
     let expected = target_installer.installer_sha256.to_ascii_lowercase();
+
     if actual != expected {
         bail!("Failed to verify checksum: actual {actual:?}, expected {expected:?}");
     }
-
     info!("Checksum ok");
+    let result = check_signature(&download_path);
+    if let Ok(result) = result
+        && result != VerificationFlags::OK
+    {
+        bail!("Failed to check PE signature: {result:?}");
+    }
+
+    if result.is_err() {
+        warn!("Could not verify PE signature of {last:?} (not an exe?)");
+    } else {
+        info!("Passed signature checks");
+    }
+
     debug!("{:?}", target_installer);
     if matches!(target_installer.installer_type, Some(InstallerType::Zip))
         || target_installer.installer_url.ends_with("zip")
@@ -420,7 +434,7 @@ fn search(_args: &Args, search_args: &Search) -> Result<()> {
 async fn main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         // Safety: is safe as no other threads launched yet
-        unsafe { std::env::set_var("RUST_LOG", "warn") }
+        unsafe { std::env::set_var("RUST_LOG", "info") }
     }
     pretty_env_logger::init();
     let args = Args::parse();
@@ -494,7 +508,6 @@ async fn download_file(url: &str, path: &Path) -> Result<()> {
 
 /// Reads the file and calculates its SHA-256 hash, comparing it to the expected value.
 fn sha256_string(path: &Path) -> Result<String> {
-    // 1. Open the file to calculate the hash
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
 
@@ -510,4 +523,20 @@ fn sha256_string(path: &Path) -> Result<String> {
 
     let result = hasher.finalize();
     Ok(hex::encode(result))
+}
+
+fn check_signature(path: &Path) -> Result<VerificationFlags> {
+    let mut file = File::open(path)?;
+    match lief::Binary::from(&mut file) {
+        Some(lief::Binary::PE(pe)) => {
+            for sig in pe.signatures() {
+                info!("{:?}", sig.content_info());
+                for signer in sig.signers() {
+                    info!("{signer:?}");
+                }
+            }
+            Ok(pe.verify_signature(VerificationChecks::all()))
+        }
+        _ => bail!("not a PE file"),
+    }
 }
