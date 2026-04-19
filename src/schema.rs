@@ -19,6 +19,9 @@ pub struct Installer {
     pub installer_url: String,
     pub installer_sha256: String,
     pub installer_type: Option<InstallerType>,
+    pub signature_sha256: Option<String>,
+    pub product_code: Option<String>,
+    pub elevation_requirement: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -65,4 +68,5 @@ pub struct InstallerManifest {
     pub install_modes: Option<Vec<String>>,
     pub installer_switches: Option<InstallerSwitches>,
     pub installer_type: Option<InstallerType>,
+    pub manifest_version: String,
 }
