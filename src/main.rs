@@ -2,6 +2,7 @@ use crate::schema::{Architecture, InstallerManifest, InstallerType, PackageManif
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
 use indicatif::ProgressBar;
+use itertools::Itertools;
 use log::{debug, info, trace, warn};
 use regex::Regex;
 use semver::{Version, VersionReq};
@@ -211,21 +212,32 @@ async fn install_package(
         })?;
     debug!("InstallerManifest: {package_manifest:?}");
 
-    let arch_string = cfg_select! {
+    let arch = cfg_select! {
         target_arch = "x86" => Architecture::X86,
         target_arch = "x86_64" => Architecture::X64,
         target_arch = "aarch64" => Architecture::Arm64,
     };
+    let fallback_arch = cfg_select! {
+        target_arch = "x86" => Architecture::X86,
+        target_arch = "x86_64" => Architecture::X86,
+        target_arch = "aarch64" => Architecture::x86_64,
+    };
 
-    let target_installer = package_manifest
-        .installers
+    let target_installer = [arch, fallback_arch]
         .iter()
-        .find(|i| {
-            (i.architecture == arch_string || i.architecture == Architecture::Neutral)
+        .cartesian_product(package_manifest.installers.iter())
+        .find(|&(&arch, i)| {
+            (i.architecture == arch || i.architecture == Architecture::Neutral)
                 && !matches!(i.installer_type, Some(InstallerType::Msix))
                 && !matches!(i.installer_type, Some(InstallerType::Zip))
         })
-        .ok_or_else(|| anyhow!("Could not find installer for architecture {arch_string:?}"))?;
+        .map(|(_, installer)| installer)
+        .ok_or_else(|| {
+            anyhow!(
+                "Could not find installer for architecture {arch:?} or fallback {fallback_arch:?}"
+            )
+        })?;
+
     debug!("Using installer: {target_installer:?}");
     println!("Downloading {:?}", target_installer.installer_url);
 

@@ -32,7 +32,7 @@ pub struct InstallerSwitches {
     pub custom: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum InstallerType {
     Exe,
@@ -45,7 +45,7 @@ pub enum InstallerType {
     Inno,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum Architecture {
     X86,
