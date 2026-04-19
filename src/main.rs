@@ -67,7 +67,7 @@ fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<(Version, PathBu
                 Some('A'..='Z') | Some('a'..='z')
             ) {
                 warn!(
-                    "Ignoring flavor {path:?} as version. Use `--flavor {}` to install it",
+                    "Ignoring variant subpath {path:?} as a version. Append `.{}` to package name to install this variant",
                     path.file_name().unwrap().to_string_lossy()
                 );
                 return None;
@@ -95,7 +95,8 @@ fn find_version(dir: &Path, req: Option<&VersionReq>) -> Result<(Version, PathBu
                     {
                         return Some((version.clone(), path));
                     } else if version.is_err() {
-                        warn!("Could not parse {path:?} as version. Ignoring!");
+                        warn!("Could not parse {path:?} as version. Ignoring! If this is a variant append `.{}` to package name",
+                              path.file_name().unwrap().to_string_lossy());
                     }
                 }
             }
