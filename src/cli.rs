@@ -16,6 +16,9 @@ pub struct Args {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Init config
+    Init(Init),
+
     /// Install packages
     Install(Install),
 
@@ -30,18 +33,25 @@ pub enum Commands {
 }
 
 #[derive(clap::Args, Debug)]
+pub struct Init {
+    /// Local path to https://github.com/microsoft/winget-pkgs
+    #[arg(short, long, value_enum)]
+    pub repo_path: PathBuf,
+}
+
+#[derive(clap::Args, Debug)]
 pub struct Install {
     #[arg(required=true,num_args=1..)]
     pub packages: Vec<String>,
     /// Local path to https://github.com/microsoft/winget-pkgs
-    #[arg(long, value_enum)]
-    pub repo_path: PathBuf,
+    #[arg(short, long)]
+    pub repo_path: Option<PathBuf>,
     /// Version or version requirement
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub version: Option<String>,
 
     /// Skip updating the git repository
-    #[arg(long, value_enum)]
+    #[arg(long)]
     pub no_update: bool,
 
     #[cfg(unix)]
@@ -67,6 +77,6 @@ pub struct Upgrade {
 pub struct Search {
     pub search_string: String,
     /// Local path to https://github.com/microsoft/winget-pkgs
-    #[arg(long, value_enum)]
-    pub repo_path: PathBuf,
+    #[arg(short, long)]
+    pub repo_path: Option<PathBuf>,
 }

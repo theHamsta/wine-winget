@@ -1,4 +1,5 @@
 use crate::schema::{Architecture, InstallerManifest, InstallerType, PackageManifest};
+use crate::settings::Settings;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
 use indicatif::ProgressBar;
@@ -14,10 +15,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
 
-use crate::cli::{Args, Install, Search};
+use crate::cli::{Args, Init, Install, Search};
 
 mod cli;
 mod schema;
+mod settings;
 
 struct DeleteOnDrop<'path> {
     path: &'path Path,
@@ -177,6 +179,7 @@ fn version_path(
 async fn install_package(
     _args: &Args,
     package: &str,
+    repo_path: &Path,
     install_args: &Install,
 ) -> anyhow::Result<()> {
     let version_req = install_args
@@ -185,8 +188,7 @@ async fn install_package(
         .map(|v| VersionReq::parse(v))
         .transpose()
         .with_context(|| anyhow!("Failed to parse version requirement"))?;
-    let (_version, version_path) =
-        version_path(package, &install_args.repo_path, version_req.as_ref())?;
+    let (_version, version_path) = version_path(package, &repo_path, version_req.as_ref())?;
 
     let package_manifest = find_subfile_case_insensitive(&version_path, &format!("{package}.yaml"))
         .ok_or_else(|| anyhow!("Could not find package_manifest"))?;
@@ -303,11 +305,23 @@ async fn install_package(
 }
 
 async fn install(args: &Args, install_args: &Install) -> Result<()> {
+    let settings = Settings::read();
+    let repo_path = install_args
+        .repo_path
+        .as_ref()
+        .or(settings.as_ref().map(|s| &s.repo_path).ok());
+
+    let Some(repo_path) = repo_path else {
+        bail!(
+            "Please specify the local path to https://github.com/microsoft/winget-pkgs using --repo-path or run `wine-winget init --repo-path <path to repo>` to store repo-path permanently"
+        );
+    };
+
     if !install_args.no_update {
-        println!("Updating {:?}", install_args.repo_path);
+        println!("Updating {:?}", repo_path);
         let result = Command::new("git")
             .arg("-C")
-            .arg(&install_args.repo_path)
+            .arg(repo_path)
             .arg("pull")
             .spawn();
         if let Err(error) = &result {
@@ -320,16 +334,27 @@ async fn install(args: &Args, install_args: &Install) -> Result<()> {
     }
 
     for package in install_args.packages.iter() {
-        install_package(args, package, install_args).await?;
+        install_package(args, package, repo_path, install_args).await?;
     }
 
     Ok(())
 }
 
 fn search(_args: &Args, search_args: &Search) -> Result<()> {
+    let settings = Settings::read();
+    let repo_path = search_args
+        .repo_path
+        .as_ref()
+        .or(settings.as_ref().map(|s| &s.repo_path).ok());
+
+    let Some(repo_path) = repo_path else {
+        bail!(
+            "Please specify the local path to https://github.com/microsoft/winget-pkgs using --repo-path or run `wine-winget init --repo-path <path to repo>` to store repo-path permanently"
+        );
+    };
     let search_string = &search_args.search_string.to_ascii_lowercase();
 
-    let manifest_path = search_args.repo_path.join("manifests");
+    let manifest_path = repo_path.join("manifests");
     debug!("manifests_path={manifest_path:?}");
     let mut todos = vec![(manifest_path, 0, false)];
     while let Some((todo_path, depth, match_all)) = todos.pop() {
@@ -402,6 +427,7 @@ async fn main() -> Result<()> {
     }
 
     match args.command.as_ref() {
+        Some(cli::Commands::Init(init_args)) => init(&args, init_args).await?,
         Some(cli::Commands::Install(install_args)) => install(&args, install_args).await?,
         Some(cli::Commands::Upgrade(_args)) => todo!(),
         Some(cli::Commands::Remove(_args)) => todo!(),
@@ -412,6 +438,31 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+async fn init(_args: &Args, init_args: &Init) -> Result<()> {
+    if !init_args.repo_path.is_dir() {
+        let mut child = Command::new("git")
+            .arg("clone")
+            .arg("https://github.com/microsoft/winget-pkgs")
+            .arg(&init_args.repo_path)
+            .spawn()?;
+        let result = child.wait()?;
+        if !result.success() {
+            bail!("Failed to run `git clone https://github.com/microsoft/winget-pkgs`")
+        }
+    } else if !init_args.repo_path.join("manifests").is_dir() {
+        bail!(
+            "{:?} does not exist. Is {:?} really a path to a clone of https://github.com/microsoft/winget-pkgs?",
+            init_args.repo_path.join("manifests"),
+            init_args.repo_path
+        );
+    }
+
+    let settings = Settings {
+        repo_path: init_args.repo_path.clone(),
+    };
+    settings.save()
 }
 
 /// Downloads the content from a URL and writes it to the specified path.
