@@ -41,6 +41,7 @@ pub enum InstallerType {
     Msix,
     Nullsoft,
     Portable,
+    Burn,
     Inno,
 }
 
