@@ -6,6 +6,7 @@ use log::{debug, info, trace, warn};
 use regex::Regex;
 use semver::{Version, VersionReq};
 use sha2::{Digest, Sha256};
+use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
@@ -320,9 +321,6 @@ fn search(_args: &Args, search_args: &Search) -> Result<()> {
     debug!("manifests_path={manifest_path:?}");
     let mut todos = vec![(manifest_path, 0, false)];
     while let Some((todo_path, depth, match_all)) = todos.pop() {
-        if depth > 2 {
-            continue;
-        }
         for e in std::fs::read_dir(&todo_path)?.flatten() {
             let path = e.path();
             if path.is_dir()
@@ -345,19 +343,21 @@ fn search(_args: &Args, search_args: &Search) -> Result<()> {
                                 .to_string_lossy()
                         );
                     }
-                    2 => {
+                    2.. => {
                         todos.push((path.clone(), depth + 1, true));
                         let package = path.file_name().expect("Folder without name");
-                        let vendor = path
-                            .parent()
-                            .expect("Recursion depth is 2, but no parent")
-                            .file_name()
-                            .expect("Folder without name");
-                        println!(
-                            "Found package: {}.{}",
-                            vendor.to_string_lossy(),
-                            package.to_string_lossy()
-                        );
+                        if !package.to_string_lossy().contains(".") {
+                            let mut segments = VecDeque::new();
+
+                            let mut cur = path.clone();
+                            for _ in 0..depth {
+                                let seg = cur.file_name().unwrap().to_string_lossy().to_string();
+                                segments.push_front(seg);
+                                cur = cur.parent().unwrap().to_owned();
+                            }
+
+                            println!("Found package: {}", segments.make_contiguous().join("."));
+                        }
                     }
                     _ => (),
                 }
