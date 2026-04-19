@@ -14,6 +14,20 @@ pub struct PackageManifest {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 #[allow(dead_code)]
+pub struct PackageDependency {
+    pub package_identifier: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+#[allow(dead_code)]
+pub struct Dependencies {
+    pub package_dependencies: Vec<PackageDependency>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+#[allow(dead_code)]
 pub struct Installer {
     pub architecture: Architecture,
     pub installer_url: String,
@@ -22,6 +36,7 @@ pub struct Installer {
     pub signature_sha256: Option<String>,
     pub product_code: Option<String>,
     pub elevation_requirement: Option<String>,
+    pub dependencies: Option<Dependencies>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -69,4 +84,6 @@ pub struct InstallerManifest {
     pub installer_switches: Option<InstallerSwitches>,
     pub installer_type: Option<InstallerType>,
     pub manifest_version: String,
+    pub product_code: Option<String>,
+    pub dependencies: Option<Dependencies>,
 }

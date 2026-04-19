@@ -205,7 +205,7 @@ async fn install_package(
     let installer_manifest =
         find_subfile_case_insensitive(&version_path, &format!("{package}.installer.yaml"))
             .ok_or_else(|| anyhow!("Failed to find installer manifest"))?;
-    let package_manifest: InstallerManifest =
+    let installer_manifest: InstallerManifest =
         yaml_serde::from_reader(File::open(&installer_manifest)?).with_context(|| {
             format!(
                 "Failed to parse InstallerManifest {installer_manifest:?}:\n{}",
@@ -227,7 +227,7 @@ async fn install_package(
 
     let target_installer = [arch, fallback_arch]
         .iter()
-        .cartesian_product(package_manifest.installers.iter())
+        .cartesian_product(installer_manifest.installers.iter())
         .find(|&(&arch, i)| {
             (i.architecture == arch || i.architecture == Architecture::Neutral)
                 && !matches!(i.installer_type, Some(InstallerType::Msix))
@@ -242,6 +242,13 @@ async fn install_package(
 
     debug!("Using installer: {target_installer:?}");
     println!("Downloading {:?}", target_installer.installer_url);
+
+    if let Some(deps) = &target_installer.dependencies {
+        warn!("{package:?} has dependencies (not handled at the moment):\n{deps:?}");
+    }
+    if let Some(deps) = &installer_manifest.dependencies {
+        warn!("{package:?} has dependencies (not handled at the moment):\n{deps:?}");
+    }
 
     let last = target_installer
         .installer_url
