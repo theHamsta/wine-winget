@@ -270,10 +270,8 @@ async fn install_package(
     if let Ok(result) = result
         && result != VerificationFlags::OK
     {
-        bail!("Failed to check PE signature: {result:?}");
-    }
-
-    if result.is_err() {
+        warn!("Failed to check PE signature: {result:?}");
+    } else if result.is_err() {
         warn!("Could not verify PE signature of {last:?} (not an exe?)");
     } else {
         info!("Passed signature checks");
