@@ -25,6 +25,9 @@ pub enum Commands {
     /// Upgrade packages
     Upgrade(Upgrade),
 
+    /// List installed packages
+    List(List),
+
     /// Remove packages
     Uninstall(Uninstall),
 
@@ -95,4 +98,12 @@ pub struct Search {
 #[derive(clap::Args, Debug)]
 pub struct ShellCompletion {
     pub shell: Shell,
+}
+
+#[derive(clap::Args, Debug)]
+pub struct List {
+    /// Path to wine
+    #[cfg(unix)]
+    #[arg(long, default_value = "wine")]
+    pub wine: String,
 }

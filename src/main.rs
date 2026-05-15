@@ -449,6 +449,16 @@ async fn main() -> Result<()> {
 
             clap_complete::generate(*shell, &mut cmd, bin_name, &mut std::io::stdout());
         }
+        Some(cli::Commands::List(list_args)) => {
+            let mut cmd = Command::new(&list_args.wine)
+                .arg("uninstaller")
+                .arg("--list")
+                .spawn()?;
+            let exit = cmd.wait()?;
+            if !exit.success() {
+                bail!("Failed to list installed wine programs")
+            }
+        }
         None => {
             cli::Args::command().print_help()?;
         }
@@ -527,30 +537,62 @@ fn uninstall(_args: &Args, uninstall_args: &Uninstall) -> Result<()> {
             )
         })?;
 
-        if let Some(product_code) = installer_manifest
+        let mut guessed_product_code = None;
+        let Some(product_code) = installer_manifest
             .product_code
             .as_ref()
             .or(target_installer.product_code.as_ref())
-        {
-            info!(
-                "Running `{} uninstaller --remove {product_code}`",
-                uninstall_args.wine
-            );
-            let mut cmd = Command::new(&uninstall_args.wine)
-                .arg("uninstaller")
-                .arg("--remove")
-                .arg(product_code)
-                .spawn()
-                .with_context(|| format!("Failed to spawn wine uninstaller for {package:?}"))?;
-            let result = cmd.wait()?;
-            if !result.success() {
-                bail!("Failed to uninstall {package:?}");
-            }
-        } else {
+            .or_else(|| {
+                guess_product_code_for_uninstall(package, uninstall_args, &mut guessed_product_code)
+            })
+        else {
             bail!("Target installer for {package:?} does not have product code. Can't uninstall");
+        };
+
+        info!(
+            "Running `{} uninstaller --remove {product_code}`",
+            uninstall_args.wine
+        );
+        let mut cmd = Command::new(&uninstall_args.wine)
+            .arg("uninstaller")
+            .arg("--remove")
+            .arg(product_code)
+            .spawn()
+            .with_context(|| format!("Failed to spawn wine uninstaller for {package:?}"))?;
+        let result = cmd.wait()?;
+        if !result.success() {
+            bail!("Failed to uninstall {package:?}");
         }
     }
     Ok(())
+}
+
+fn guess_product_code_for_uninstall<'out>(
+    package: &str,
+    uninstall_args: &Uninstall,
+    guessed_product_code: &'out mut Option<String>,
+) -> Option<&'out String> {
+    debug!(
+        "Guessing product code: `{} uninstaller --list`",
+        uninstall_args.wine
+    );
+    let output = Command::new(&uninstall_args.wine)
+        .arg("uninstaller")
+        .arg("--list")
+        .output()
+        .ok()?;
+    debug!("status {:?}", output.status);
+    debug!("stdout {:#?}", str::from_utf8(&output.stdout));
+    debug!("stderr {:#?}", str::from_utf8(&output.stderr));
+    for line in str::from_utf8(&output.stderr).ok()?.lines() {
+        if let Some((name, _)) = line.split_once("|")
+            && Some(name.to_lowercase()) == package.split_once('.').map(|s| s.1.to_lowercase())
+        {
+            *guessed_product_code = Some(name.to_string());
+            return guessed_product_code.as_ref();
+        }
+    }
+    None
 }
 
 async fn init(_args: &Args, init_args: &Init) -> Result<()> {
