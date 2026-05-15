@@ -26,7 +26,7 @@ pub enum Commands {
     Upgrade(Upgrade),
 
     /// Remove packages
-    Remove(Remove),
+    Uninstall(Uninstall),
 
     /// Search package
     Search(Search),
@@ -65,9 +65,17 @@ pub struct Install {
 }
 
 #[derive(clap::Args, Debug)]
-pub struct Remove {
+pub struct Uninstall {
     #[arg(required=true,num_args=1..)]
     pub packages: Vec<String>,
+    /// Local path to https://github.com/microsoft/winget-pkgs
+    #[arg(short, long)]
+    pub repo_path: Option<PathBuf>,
+
+    /// Path to wine
+    #[cfg(unix)]
+    #[arg(long, default_value = "wine")]
+    pub wine: String,
 }
 
 #[derive(clap::Args, Debug)]

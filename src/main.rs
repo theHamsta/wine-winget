@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
 
-use crate::cli::{Args, Init, Install, Search, ShellCompletion};
+use crate::cli::{Args, Init, Install, Search, ShellCompletion, Uninstall};
 
 mod cli;
 mod schema;
@@ -440,8 +440,8 @@ async fn main() -> Result<()> {
     match args.command.as_ref() {
         Some(cli::Commands::Init(init_args)) => init(&args, init_args).await?,
         Some(cli::Commands::Install(install_args)) => install(&args, install_args).await?,
-        Some(cli::Commands::Upgrade(_args)) => todo!(),
-        Some(cli::Commands::Remove(_args)) => todo!(),
+        Some(cli::Commands::Upgrade(_upgrade_args)) => todo!(),
+        Some(cli::Commands::Uninstall(uninstall_args)) => uninstall(&args, uninstall_args)?,
         Some(cli::Commands::Search(search_args)) => search(&args, search_args)?,
         Some(cli::Commands::ShellCompletion(ShellCompletion { shell })) => {
             let mut cmd = Args::command();
@@ -454,6 +454,102 @@ async fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn uninstall(_args: &Args, uninstall_args: &Uninstall) -> Result<()> {
+    let settings = Settings::read();
+    let repo_path = uninstall_args
+        .repo_path
+        .as_ref()
+        .or(settings.as_ref().map(|s| &s.repo_path).ok());
+
+    let Some(repo_path) = repo_path else {
+        bail!(
+            "Please specify the local path to https://github.com/microsoft/winget-pkgs using --repo-path or run `wine-winget init --repo-path <path to repo>` to store repo-path permanently"
+        );
+    };
+
+    let version_req = None;
+
+    // TODO: make subfunction, execute for all packages, even on failure for one package
+    for package in uninstall_args.packages.iter() {
+        let (_version, version_path) = version_path(package, repo_path, version_req.as_ref())?;
+
+        let package_manifest =
+            find_subfile_case_insensitive(&version_path, &format!("{package}.yaml"))
+                .ok_or_else(|| anyhow!("Could not find package_manifest"))?;
+
+        let package_manifest: PackageManifest =
+            yaml_serde::from_reader(File::open(&package_manifest)?).with_context(|| {
+                format!(
+                    "Failed to parse PackageManifest {package_manifest:?}:\n{}",
+                    std::fs::read_to_string(&package_manifest).unwrap_or_else(|_| "".to_string())
+                )
+            })?;
+
+        debug!("PackageManifest: {package_manifest:?}");
+        let installer_manifest =
+            find_subfile_case_insensitive(&version_path, &format!("{package}.installer.yaml"))
+                .ok_or_else(|| anyhow!("Failed to find installer manifest"))?;
+        let installer_manifest: InstallerManifest =
+            yaml_serde::from_reader(File::open(&installer_manifest)?).with_context(|| {
+                format!(
+                    "Failed to parse InstallerManifest {installer_manifest:?}:\n{}",
+                    std::fs::read_to_string(&installer_manifest).unwrap_or_else(|_| "".to_string())
+                )
+            })?;
+        debug!("InstallerManifest: {package_manifest:?}");
+
+        let arch = cfg_select! {
+            target_arch = "x86" => Architecture::X86,
+            target_arch = "x86_64" => Architecture::X64,
+            target_arch = "aarch64" => Architecture::Arm64,
+        };
+        let fallback_arch = cfg_select! {
+            target_arch = "x86" => Architecture::X86,
+            target_arch = "x86_64" => Architecture::X86,
+            target_arch = "aarch64" => Architecture::x86_64,
+        };
+
+        let target_installer = [arch, fallback_arch]
+        .iter()
+        .cartesian_product(installer_manifest.installers.iter())
+        .find(|&(&arch, i)| {
+            (i.architecture == arch || i.architecture == Architecture::Neutral)
+                && !matches!(i.installer_type, Some(InstallerType::Msix))
+                && !matches!(i.installer_type, Some(InstallerType::Zip))
+        })
+        .map(|(_, installer)| installer)
+        .ok_or_else(|| {
+            anyhow!(
+                "Could not find installer for architecture {arch:?} or fallback {fallback_arch:?}"
+            )
+        })?;
+
+        if let Some(product_code) = installer_manifest
+            .product_code
+            .as_ref()
+            .or(target_installer.product_code.as_ref())
+        {
+            info!(
+                "Running `{} uninstaller --remove {product_code}`",
+                uninstall_args.wine
+            );
+            let mut cmd = Command::new(&uninstall_args.wine)
+                .arg("uninstaller")
+                .arg("--remove")
+                .arg(product_code)
+                .spawn()
+                .with_context(|| format!("Failed to spawn wine uninstaller for {package:?}"))?;
+            let result = cmd.wait()?;
+            if !result.success() {
+                bail!("Failed to uninstall {package:?}");
+            }
+        } else {
+            bail!("Target installer for {package:?} does not have product code. Can't uninstall");
+        }
+    }
     Ok(())
 }
 
