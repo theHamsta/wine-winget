@@ -47,7 +47,7 @@ pub struct Install {
     #[arg(short, long)]
     pub repo_path: Option<PathBuf>,
     /// Version or version requirement
-    #[arg(long)]
+    #[arg(short, long)]
     pub version: Option<String>,
 
     /// Skip updating the git repository
