@@ -546,7 +546,9 @@ fn uninstall(_args: &Args, uninstall_args: &Uninstall) -> Result<()> {
                 guess_product_code_for_uninstall(package, uninstall_args, &mut guessed_product_code)
             })
         else {
-            bail!("Target installer for {package:?} does not have product code. Can't uninstall");
+            bail!(
+                "Target installer for {package:?} does not have product code. Can't uninstall. Try finding your package with `wine uninstaller --list` and then uninstall with `wine uninstaller --remove <guid>`"
+            );
         };
 
         info!(
