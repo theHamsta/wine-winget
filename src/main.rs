@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
 
-use crate::cli::{Args, Init, Install, Search};
+use crate::cli::{Args, Init, Install, Search, ShellCompletion};
 
 mod cli;
 mod schema;
@@ -437,20 +437,18 @@ async fn main() -> Result<()> {
     pretty_env_logger::init();
     let args = Args::parse();
 
-    if let Some(shell) = args.shell_completion {
-        let mut cmd = Args::command();
-        let bin_name = cmd.get_name().to_string();
-
-        clap_complete::generate(shell, &mut cmd, bin_name, &mut std::io::stdout());
-        return Ok(());
-    }
-
     match args.command.as_ref() {
         Some(cli::Commands::Init(init_args)) => init(&args, init_args).await?,
         Some(cli::Commands::Install(install_args)) => install(&args, install_args).await?,
         Some(cli::Commands::Upgrade(_args)) => todo!(),
         Some(cli::Commands::Remove(_args)) => todo!(),
         Some(cli::Commands::Search(search_args)) => search(&args, search_args)?,
+        Some(cli::Commands::ShellCompletion(ShellCompletion { shell })) => {
+            let mut cmd = Args::command();
+            let bin_name = cmd.get_name().to_string();
+
+            clap_complete::generate(*shell, &mut cmd, bin_name, &mut std::io::stdout());
+        }
         None => {
             cli::Args::command().print_help()?;
         }

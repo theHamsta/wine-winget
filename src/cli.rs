@@ -30,6 +30,9 @@ pub enum Commands {
 
     /// Search package
     Search(Search),
+
+    /// Generate Shell completion
+    ShellCompletion(ShellCompletion),
 }
 
 #[derive(clap::Args, Debug)]
@@ -79,4 +82,9 @@ pub struct Search {
     /// Local path to https://github.com/microsoft/winget-pkgs
     #[arg(short, long)]
     pub repo_path: Option<PathBuf>,
+}
+
+#[derive(clap::Args, Debug)]
+pub struct ShellCompletion {
+    pub shell: Shell,
 }
