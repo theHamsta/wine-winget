@@ -584,11 +584,13 @@ fn guess_product_code_for_uninstall<'out>(
     debug!("status {:?}", output.status);
     debug!("stdout {:#?}", str::from_utf8(&output.stdout));
     debug!("stderr {:#?}", str::from_utf8(&output.stderr));
+    let product = package.split_once('.').map(|s| s.1.to_lowercase())?;
     for line in str::from_utf8(&output.stderr).ok()?.lines() {
-        if let Some((name, _)) = line.split_once("|")
-            && Some(name.to_lowercase()) == package.split_once('.').map(|s| s.1.to_lowercase())
+        let split = line.split("|").collect::<Vec<_>>();
+        if let &[identifier_or_guid, .., name] = split.as_slice()
+            && (identifier_or_guid.to_lowercase() == product || name.to_lowercase() == product)
         {
-            *guessed_product_code = Some(name.to_string());
+            *guessed_product_code = Some(identifier_or_guid.to_string());
             return guessed_product_code.as_ref();
         }
     }
