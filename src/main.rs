@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{CommandFactory, Parser};
 use indicatif::ProgressBar;
 use itertools::Itertools;
-use lief::pe::signature::{VerificationChecks, VerificationFlags};
+//use lief::pe::signature::{VerificationChecks, VerificationFlags};
 use log::{debug, info, trace, warn};
 use regex::Regex;
 use semver::{Version, VersionReq};
@@ -266,16 +266,16 @@ async fn install_package(
         bail!("Failed to verify checksum: actual {actual:?}, expected {expected:?}");
     }
     info!("Checksum ok");
-    let result = check_signature(&download_path);
-    if let Ok(result) = result
-        && result != VerificationFlags::OK
-    {
-        warn!("Failed to check PE signature: {result:?}");
-    } else if result.is_err() {
-        warn!("Could not verify PE signature of {last:?} (not an exe?)");
-    } else {
-        info!("Passed signature checks");
-    }
+    //let result = check_signature(&download_path);
+    //if let Ok(result) = result
+        //&& result != VerificationFlags::OK
+    //{
+        //warn!("Failed to check PE signature: {result:?}");
+    //} else if result.is_err() {
+        //warn!("Could not verify PE signature of {last:?} (not an exe?)");
+    //} else {
+        //info!("Passed signature checks");
+    //}
 
     debug!("{:?}", target_installer);
     if matches!(target_installer.installer_type, Some(InstallerType::Zip))
@@ -663,18 +663,18 @@ fn sha256_string(path: &Path) -> Result<String> {
     Ok(hex::encode(result))
 }
 
-fn check_signature(path: &Path) -> Result<VerificationFlags> {
-    let mut file = File::open(path)?;
-    match lief::Binary::from(&mut file) {
-        Some(lief::Binary::PE(pe)) => {
-            for sig in pe.signatures() {
-                info!("{:?}", sig.content_info());
-                for signer in sig.signers() {
-                    info!("{signer:?}");
-                }
-            }
-            Ok(pe.verify_signature(VerificationChecks::all()))
-        }
-        _ => bail!("not a PE file"),
-    }
-}
+//fn check_signature(path: &Path) -> Result<VerificationFlags> {
+    //let mut file = File::open(path)?;
+    //match lief::Binary::from(&mut file) {
+        //Some(lief::Binary::PE(pe)) => {
+            //for sig in pe.signatures() {
+                //info!("{:?}", sig.content_info());
+                //for signer in sig.signers() {
+                    //info!("{signer:?}");
+                //}
+            //}
+            //Ok(pe.verify_signature(VerificationChecks::all()))
+        //}
+        //_ => bail!("not a PE file"),
+    //}
+//}
