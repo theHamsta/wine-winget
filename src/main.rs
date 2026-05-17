@@ -256,7 +256,14 @@ async fn install_package(
         .rsplit_once("/")
         .ok_or_else(|| anyhow!("Installer URL does not contain `/`"))?
         .1;
-    let download_path = std::env::temp_dir().join(last);
+
+    // https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file + '=' + '&'
+    let mut sanitized = last.replace('?', "_");
+    for c in ['<', '>', '\\', ':', '|', '*', '=', '&'] {
+        sanitized = sanitized.replace(c, "_");
+    }
+    debug!("Downloading to {sanitized:?}");
+    let download_path = std::env::temp_dir().join(&sanitized);
     DeleteOnDrop::new(&download_path);
     download_file(&target_installer.installer_url, &download_path).await?;
     let actual = sha256_string(&download_path)?.to_ascii_lowercase();
@@ -268,13 +275,13 @@ async fn install_package(
     info!("Checksum ok");
     //let result = check_signature(&download_path);
     //if let Ok(result) = result
-        //&& result != VerificationFlags::OK
+    //&& result != VerificationFlags::OK
     //{
-        //warn!("Failed to check PE signature: {result:?}");
+    //warn!("Failed to check PE signature: {result:?}");
     //} else if result.is_err() {
-        //warn!("Could not verify PE signature of {last:?} (not an exe?)");
+    //warn!("Could not verify PE signature of {last:?} (not an exe?)");
     //} else {
-        //info!("Passed signature checks");
+    //info!("Passed signature checks");
     //}
 
     debug!("{:?}", target_installer);
@@ -304,6 +311,23 @@ async fn install_package(
             File::open(download_path).with_context(|| "Failed to open downloaded file")?,
             &install_path,
         )?;
+    }
+    else if target_installer.installer_url.ends_with("msi") {
+        println!("Running {last:?}!");
+        let mut install_cmd = if cfg!(unix) {
+            std::process::Command::new(&install_args.wine)
+                .arg("msiexec")
+                .arg("/i")
+                .arg(&download_path)
+                .spawn()?
+        } else {
+            std::process::Command::new(&download_path).spawn()?
+        };
+        let output = install_cmd.wait()?;
+        if !output.success() {
+            bail!("Installer failed!");
+        }
+        println!("Installer ran successfully!");
     } else {
         println!("Running {last:?}!");
         let mut install_cmd = if cfg!(unix) {
@@ -664,17 +688,17 @@ fn sha256_string(path: &Path) -> Result<String> {
 }
 
 //fn check_signature(path: &Path) -> Result<VerificationFlags> {
-    //let mut file = File::open(path)?;
-    //match lief::Binary::from(&mut file) {
-        //Some(lief::Binary::PE(pe)) => {
-            //for sig in pe.signatures() {
-                //info!("{:?}", sig.content_info());
-                //for signer in sig.signers() {
-                    //info!("{signer:?}");
-                //}
-            //}
-            //Ok(pe.verify_signature(VerificationChecks::all()))
-        //}
-        //_ => bail!("not a PE file"),
-    //}
+//let mut file = File::open(path)?;
+//match lief::Binary::from(&mut file) {
+//Some(lief::Binary::PE(pe)) => {
+//for sig in pe.signatures() {
+//info!("{:?}", sig.content_info());
+//for signer in sig.signers() {
+//info!("{signer:?}");
+//}
+//}
+//Ok(pe.verify_signature(VerificationChecks::all()))
+//}
+//_ => bail!("not a PE file"),
+//}
 //}
