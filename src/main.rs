@@ -189,7 +189,7 @@ async fn install_package(
         .map(|v| VersionReq::parse(v))
         .transpose()
         .with_context(|| anyhow!("Failed to parse version requirement"))?;
-    let (_version, version_path) = version_path(package, &repo_path, version_req.as_ref())?;
+    let (_version, version_path) = version_path(package, repo_path, version_req.as_ref())?;
 
     let package_manifest = find_subfile_case_insensitive(&version_path, &format!("{package}.yaml"))
         .ok_or_else(|| anyhow!("Could not find package_manifest"))?;
