@@ -213,7 +213,7 @@ async fn install_package(
                 std::fs::read_to_string(&installer_manifest).unwrap_or_else(|_| "".to_string())
             )
         })?;
-    debug!("InstallerManifest: {package_manifest:?}");
+    debug!("InstallerManifest: {installer_manifest:?}");
 
     let arch = cfg_select! {
         target_arch = "x86" => Architecture::X86,
