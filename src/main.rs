@@ -197,23 +197,23 @@ async fn install_package(
     let package_manifest: PackageManifest = yaml_serde::from_reader(File::open(&package_manifest)?)
         .with_context(|| {
             format!(
-                "Failed to parse PackageManifest {package_manifest:?}:\n{}",
+                "Failed to parse PackageManifest {package_manifest:#?}:\n{}",
                 std::fs::read_to_string(&package_manifest).unwrap_or_else(|_| "".to_string())
             )
         })?;
 
-    debug!("PackageManifest: {package_manifest:?}");
+    debug!("PackageManifest:\n{package_manifest:#?}");
     let installer_manifest =
         find_subfile_case_insensitive(&version_path, &format!("{package}.installer.yaml"))
             .ok_or_else(|| anyhow!("Failed to find installer manifest"))?;
     let installer_manifest: InstallerManifest =
         yaml_serde::from_reader(File::open(&installer_manifest)?).with_context(|| {
             format!(
-                "Failed to parse InstallerManifest {installer_manifest:?}:\n{}",
+                "Failed to parse InstallerManifest {installer_manifest:#?}:\n{}",
                 std::fs::read_to_string(&installer_manifest).unwrap_or_else(|_| "".to_string())
             )
         })?;
-    debug!("InstallerManifest: {installer_manifest:?}");
+    debug!("InstallerManifest:\n{installer_manifest:#?}");
 
     let arch = cfg_select! {
         target_arch = "x86" => Architecture::X86,
@@ -241,7 +241,7 @@ async fn install_package(
             )
         })?;
 
-    debug!("Using installer: {target_installer:?}");
+    debug!("Using installer:\n{target_installer:#?}");
     println!("Downloading {:?}", target_installer.installer_url);
 
     if let Some(deps) = &target_installer.dependencies {
@@ -311,8 +311,7 @@ async fn install_package(
             File::open(download_path).with_context(|| "Failed to open downloaded file")?,
             &install_path,
         )?;
-    }
-    else if target_installer.installer_url.ends_with("msi") {
+    } else if target_installer.installer_url.ends_with("msi") {
         println!("Running {last:?}!");
         let mut install_cmd = if cfg!(unix) {
             std::process::Command::new(&install_args.wine)
