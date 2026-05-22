@@ -235,6 +235,16 @@ async fn install_package(
                 && !matches!(i.installer_type, Some(InstallerType::Zip))
         })
         .map(|(_, installer)| installer)
+        .or_else(|| {
+            [arch, fallback_arch]
+                .iter()
+                .cartesian_product(installer_manifest.installers.iter())
+                .find(|&(&arch, i)| {
+                    (i.architecture == arch || i.architecture == Architecture::Neutral)
+                        && !matches!(i.installer_type, Some(InstallerType::Msix))
+                })
+                .map(|(_, installer)| installer)
+        })
         .ok_or_else(|| {
             anyhow!(
                 "Could not find installer for architecture {arch:?} or fallback {fallback_arch:?}"
