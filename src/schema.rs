@@ -56,6 +56,7 @@ pub enum InstallerType {
     Exe,
     Zip,
     Wix,
+    Msi,
     Msix,
     Nullsoft,
     Portable,
