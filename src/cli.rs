@@ -60,6 +60,10 @@ pub struct Install {
     #[arg(long)]
     pub no_update: bool,
 
+    /// Silent
+    #[arg(short, long)]
+    pub silent: bool,
+
     #[cfg(unix)]
     /// Path to wine
     #[cfg(unix)]

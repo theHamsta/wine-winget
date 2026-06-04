@@ -339,12 +339,34 @@ async fn install_package(
         println!("Installer ran successfully!");
     } else {
         println!("Running {last:?}!");
+        let silent_args = if install_args.silent {
+            let switch = installer_manifest
+                .installer_switches
+                .and_then(|s| s.silent_with_progress.or(s.silent))
+                .map(|s| {
+                    s.split_whitespace()
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>()
+                });
+            switch.unwrap_or_else(|| match installer_manifest.installer_type {
+                Some(InstallerType::Msi) => vec!["/q".to_string()],
+                Some(InstallerType::Inno) => vec!["/SILENT".to_string()],
+                Some(InstallerType::Nullsoft) => vec!["/S".to_string()],
+                None | Some(_) => vec![],
+            })
+        } else {
+            vec![]
+        };
+        debug!("silent_args={silent_args:?}");
         let mut install_cmd = if cfg!(unix) {
             std::process::Command::new(&install_args.wine)
                 .arg(&download_path)
+                .args(&silent_args)
                 .spawn()?
         } else {
-            std::process::Command::new(&download_path).spawn()?
+            std::process::Command::new(&download_path)
+                .args(&silent_args)
+                .spawn()?
         };
         let output = install_cmd.wait()?;
         if !output.success() {
@@ -352,7 +374,6 @@ async fn install_package(
         }
         println!("Installer ran successfully!");
     }
-
     Ok(())
 }
 
