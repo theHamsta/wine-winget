@@ -352,7 +352,7 @@ async fn install_package(
                 Some(InstallerType::Msi) => vec!["/q".to_string()],
                 Some(InstallerType::Inno) => vec!["/SILENT".to_string()],
                 Some(InstallerType::Nullsoft) => vec!["/S".to_string()],
-                None | Some(_) => vec![],
+                _ => vec![],
             })
         } else {
             vec![]
