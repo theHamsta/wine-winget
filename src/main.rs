@@ -49,7 +49,7 @@ fn decompress_zip(reader: impl Read + Seek, target_path: &Path) -> Result<()> {
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
         if file.is_file()
-            && let Some(filename) = PathBuf::from(file.name()).file_name()
+            && let Some(filename) = PathBuf::from(file.name()?.as_ref()).file_name()
         {
             let out_path = target_path.join(filename);
             let mut out = File::create(&out_path)
